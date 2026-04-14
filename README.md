@@ -220,14 +220,25 @@ curl http://localhost:8080/dead-letters
 ## 十、AI 使用说明
 
 ### AI 提供帮助的地方
+
+**设计与实现阶段**
 - 生成 SQLite schema 初稿和 `ClaimPending` 的原子 UPDATE 写法
-- 建议使用 `log/slog`（Go 1.21 stdlib）替代第三方日志库，减少依赖
+- 建议使用 `log/slog`（Go 1.22 stdlib）替代第三方日志库，减少依赖
 - 梳理 at-least-once vs exactly-once 的工程权衡逻辑
 
+**代码补全与修复**
+- 发现并修复 `go.mod` 版本声明错误（`go 1.21` → `go 1.22`，因 `http.PathValue` 需要 1.22）
+- 发现并修复 `backoff` 函数的 int64 溢出 bug：`math.Pow(2, 大数)` 转 `time.Duration` 时溢出为负值，导致退避上限判断失效；改为在浮点域完成上限比较后再转换
+- 在代码关键节点补充详细注释，说明设计意图（WAL 模式原因、ClaimPending 事务原子性、at-least-once 崩溃恢复机制等）
+
+**可靠性改进**
+- 指出 dispatcher 分发 goroutine 缺少 `recover`，补充后提炼为 `internal/goroutine` 包（`Go` / `GoWithLogger`），统一替换项目中所有裸 `go` 调用，防止单个任务 panic 崩溃整个进程
+
+**测试**
+- 编写 25 个单元测试，覆盖 store / dispatcher / server 三个包的核心路径
+- 编写 `scripts/e2e_test.sh`，对运行中的服务发起真实 HTTP 请求，覆盖 11 个场景（正常投递、默认值填充、重试、死信、参数校验、404 等），使用 httpbin.org 模拟不同供应商响应
+
 ### AI 给出但未采纳的建议
-- **引入 Redis 作为任务队列**：AI 建议用 Redis List + BLPOP 实现队列，实时性更好。未采纳原因：增加外部依赖，对 MVP 是过度设计，SQLite 轮询完全够用。
-- **Jitter 加入退避公式**：AI 建议在退避时间上加随机抖动防止惊群。未采纳原因：本服务是单实例单队列，不存在多个 Consumer 同时重试同一外部 API 的场景，jitter 意义不大。
-- **供应商配置注册表**：AI 建议在服务内部维护供应商配置，调用方只传 `vendor_id`。未采纳原因：MVP 阶段增加了不必要的 CRUD 接口和配置管理负担。
 
 ### 关键决策由自己做出
 - **系统边界的划定**：明确本服务不做鉴权、不保证幂等性、不解析供应商响应。
