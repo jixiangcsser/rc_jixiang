@@ -1,0 +1,10 @@
+# 编译产物
+rc_jixiang
+
+# Claude Code 本地配置
+.claude/
+
+# SQLite 数据库文件（运行时生成）
+*.db
+*.db-wal
+*.db-shm
